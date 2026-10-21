@@ -1,4 +1,6 @@
 """Build an SRT + transcript.json from chunks and either a {chunk id: text} map or hypotheses (uses "final", else "ctc")."""
+import utils.transport
+import utils.session
 import json, sys
 
 CHUNKS, TEXTS, OUT_SRT, OUT_JSON = sys.argv[1:5]

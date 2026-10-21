@@ -2,3 +2,5 @@
 *.autosave.json
 __pycache__/
 .venv/
+config.bat
+node_modules
