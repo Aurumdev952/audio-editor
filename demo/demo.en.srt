@@ -1,0 +1,20 @@
+1
+00:00:00,500 --> 00:00:03,247
+Hello and welcome. How are you today?
+
+2
+00:00:04,047 --> 00:00:06,367
+I'm fine, thank you very much.
+
+3
+00:00:07,167 --> 00:00:09,486
+Tell me how you started your business.
+
+4
+00:00:10,286 --> 00:00:15,631
+I saw that people in my town needed vegetables, so I started a small farm.
+
+5
+00:00:16,431 --> 00:00:19,432
+That's a great story. Thank you for sharing.
+

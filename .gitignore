@@ -1,0 +1,4 @@
+/target
+*.autosave.json
+__pycache__/
+.venv/

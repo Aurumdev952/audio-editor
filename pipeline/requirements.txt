@@ -1,0 +1,7 @@
+# Python 3.12+, NVIDIA GPU (Ampere or newer), ffmpeg and libsndfile on the system.
+# Nemotron 3 Diarization needs NeMo from main (the 3.0 release cannot load it).
+Cython
+packaging
+soundfile
+numpy
+nemo_toolkit[asr] @ git+https://github.com/NVIDIA/NeMo.git

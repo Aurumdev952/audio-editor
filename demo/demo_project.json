@@ -1,0 +1,49 @@
+{
+ "audio_path": "demo.m4a",
+ "state": {
+  "clips": [
+   {
+    "at": 0.0,
+    "src_start": 0.0,
+    "src_end": 20.232125000000003
+   }
+  ],
+  "captions": [
+   {
+    "start": 0.5,
+    "end": 3.24675,
+    "speaker": "Speaker 1",
+    "text": "Muraho, murakaza neza. Amakuru y'uyu munsi?",
+    "translation": "Hello and welcome. How are you today?"
+   },
+   {
+    "start": 4.04675,
+    "end": 6.36675,
+    "speaker": "Speaker 2",
+    "text": "Ni meza, murakoze cyane.",
+    "translation": "I'm fine, thank you very much."
+   },
+   {
+    "start": 7.1667499999999995,
+    "end": 9.4855,
+    "speaker": "Speaker 1",
+    "text": "Mbwira uko watangiye business yawe.",
+    "translation": "Tell me how you started your business."
+   },
+   {
+    "start": 10.2855,
+    "end": 15.630500000000001,
+    "speaker": "Speaker 2",
+    "text": "Nabonye ko abantu bo mu mujyi wanjye bakeneye imboga, ntangira umurima muto.",
+    "translation": "I saw that people in my town needed vegetables, so I started a small farm."
+   },
+   {
+    "start": 16.430500000000002,
+    "end": 19.432125000000003,
+    "speaker": "Speaker 1",
+    "text": "Ni inkuru nziza. Murakoze kudusangiza.",
+    "translation": "That's a great story. Thank you for sharing."
+   }
+  ]
+ }
+}
