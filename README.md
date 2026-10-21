@@ -23,7 +23,8 @@ NVIDIA's Kinyarwanda speech models.
 - **Review tools.** Search, find & replace across both languages, filters for captions with no text or
   no English, and speaker renaming.
 - **Export.** Edited audio (m4a, mp3, wav, flac, ogg), SRT in Kinyarwanda, English or both, and an MP4
-  with a black background and burned-in captions coloured by speaker.
+  with a black background and burned-in captions coloured by speaker. The video holds one frame per
+  caption change instead of 25 identical frames a second, so a 15-minute export takes about 30 seconds.
 - **Projects.** A project is a small JSON file next to your audio. Edits autosave every 20 seconds.
 
 ## Setup

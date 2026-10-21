@@ -182,33 +182,90 @@ pub fn build_ass(caps: &[Caption], speakers: &[String], o: &VideoOptions) -> Str
     s
 }
 
+/// Longest a single video frame may last; keeps players' seeking responsive on long silent stretches.
+const MAX_FRAME_SECS: f64 = 2.0;
+
+/// The picture only changes when a caption starts or ends, so the video gets one frame per change
+/// (variable frame rate) instead of 25 identical frames a second. Times are rounded to centiseconds,
+/// the precision `ass_time` writes, so every frame lands exactly on a caption boundary.
+fn frame_times(caps: &[Caption], dur: f64) -> Vec<(f64, f64)> {
+    let cs = |t: f64| (t * 100.0).round() / 100.0;
+    let mut cuts: Vec<f64> = caps.iter().flat_map(|c| [cs(c.start), cs(c.end)]).filter(|&t| t > 0.0 && t < dur).collect();
+    cuts.push(0.0);
+    cuts.push(dur);
+    cuts.sort_by(f64::total_cmp);
+    cuts.dedup();
+    let mut frames = Vec::new();
+    for w in cuts.windows(2) {
+        let mut t = w[0];
+        while w[1] - t > MAX_FRAME_SECS {
+            frames.push((t, MAX_FRAME_SECS));
+            t += MAX_FRAME_SECS;
+        }
+        if w[1] - t > 1e-4 {
+            frames.push((t, w[1] - t));
+        }
+    }
+    frames
+}
+
 pub fn export_video(samples: &[f32], state: &EditState, out: &Path, o: &VideoOptions, progress: &ProgressHandle) -> Result<()> {
     let edited = render_edited(samples, state);
     let dur = edited.len() as f64 / SAMPLE_RATE as f64;
     let dir = temp_dir()?;
     write_wav(&dir.join("edited.wav"), &edited)?;
-    std::fs::write(dir.join("subs.ass"), build_ass(&state.edited_captions(), &state.speakers(), o))?;
-    let args: Vec<String> = [
-        "-f", "lavfi", "-i", &format!("color=c=black:s={}x{}:r=25", o.width, o.height),
-        "-i", "edited.wav",
-        "-vf", "ass=subs.ass",
-        "-map", "0:v", "-map", "1:a",
-        "-c:v", "libx264", "-preset", "veryfast", "-tune", "stillimage", "-pix_fmt", "yuv420p", "-crf", "23",
-        "-c:a", "aac", "-b:a", "192k",
-        "-t", &format!("{dur:.3}"),
-        "-movflags", "+faststart",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .chain([out.to_string_lossy().into_owned()])
-    .collect();
-    run_ffmpeg(&args, &dir, dur, progress)
+    let caps = state.edited_captions();
+    std::fs::write(dir.join("subs.ass"), build_ass(&caps, &state.speakers(), o))?;
+
+    // concat-demuxer list: one black still per caption change, each held until the next change
+    let mut list = String::new();
+    for (_, d) in frame_times(&caps, dur) {
+        list.push_str(&format!("file 'black.png'\nduration {d:.4}\n"));
+    }
+    list.push_str("file 'black.png'\n"); // the demuxer ignores the last entry's duration
+    std::fs::write(dir.join("frames.txt"), list)?;
+    let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    run_ffmpeg(&args(&["-f", "lavfi", "-i", &format!("color=c=black:s={}x{}", o.width, o.height), "-frames:v", "1", "black.png"]), &dir, 1.0, &ProgressHandle::default())?;
+
+    // AAC encoding is single-threaded and the slowest step, so it runs alongside the video encode
+    let audio = {
+        let (dir, progress) = (dir.clone(), progress.clone());
+        std::thread::spawn(move || run_ffmpeg(&args(&["-i", "edited.wav", "-c:a", "aac", "-b:a", "128k", "audio.m4a"]), &dir, dur, &progress))
+    };
+    run_ffmpeg(
+        &args(&[
+            "-f", "concat", "-safe", "0", "-i", "frames.txt",
+            "-vf", "ass=subs.ass", "-fps_mode", "vfr",
+            "-c:v", "libx264", "-preset", "veryfast", "-tune", "stillimage", "-pix_fmt", "yuv420p", "-crf", "23",
+            "-an", "video.mp4",
+        ]),
+        &dir,
+        dur,
+        &ProgressHandle::default(),
+    )?;
+    audio.join().map_err(|_| anyhow::anyhow!("audio encoder thread panicked"))??;
+
+    let mut mux = args(&["-i", "video.mp4", "-i", "audio.m4a", "-map", "0:v", "-map", "1:a", "-c", "copy", "-t", &format!("{dur:.3}"), "-movflags", "+faststart"]);
+    mux.push(out.to_string_lossy().into_owned());
+    run_ffmpeg(&mux, &dir, dur, &ProgressHandle::default())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::model::Caption;
+
+    #[test]
+    fn video_frames_land_on_caption_changes() {
+        let caps = vec![
+            Caption { start: 0.5, end: 1.004, speaker: "A".into(), text: "a".into(), translation: String::new() },
+            Caption { start: 1.004, end: 6.0, speaker: "A".into(), text: "b".into(), translation: String::new() },
+        ];
+        let f = frame_times(&caps, 7.0);
+        let starts: Vec<f64> = f.iter().map(|x| (x.0 * 100.0).round() / 100.0).collect();
+        assert_eq!(starts, vec![0.0, 0.5, 1.0, 3.0, 5.0, 6.0]);
+        assert!((f.iter().map(|x| x.1).sum::<f64>() - 7.0).abs() < 1e-9);
+    }
 
     #[test]
     fn exports_audio_and_video_with_cuts() {
@@ -240,5 +297,21 @@ mod tests {
             let d: f64 = String::from_utf8_lossy(&out.stdout).trim().parse().unwrap();
             assert!((d - 3.0).abs() < 0.1, "{f}: {d}");
         }
+    }
+
+    /// `BENCH_PROJECT=path/to/project.json cargo test --release -- --ignored --nocapture bench_video_export`
+    #[test]
+    #[ignore]
+    fn bench_video_export() {
+        let path = std::path::PathBuf::from(std::env::var("BENCH_PROJECT").expect("set BENCH_PROJECT"));
+        let pf: crate::model::ProjectFile = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let audio = path.parent().unwrap().join(&pf.audio_path);
+        let samples = crate::audio::decode(audio.to_str().unwrap()).unwrap();
+        let mut state = pf.state;
+        state.ensure_clips(samples.len() as f64 / SAMPLE_RATE as f64);
+        let out = std::env::temp_dir().join("audio-editor-bench.mp4");
+        let t = std::time::Instant::now();
+        export_video(&samples, &state, &out, &VideoOptions::default(), &ProgressHandle::default()).unwrap();
+        println!("video export of {:.0}s took {:.1}s -> {}", state.duration(), t.elapsed().as_secs_f64(), out.display());
     }
 }
